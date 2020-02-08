@@ -23,3 +23,17 @@ variable "index_document" {
   type    = string
   default = "index.html"
 }
+
+variable "lambda_function_associations" {
+  type = list(object({
+    event_type   = string
+    lambda_arn   = string
+    include_body = bool
+  }))
+  default = []
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

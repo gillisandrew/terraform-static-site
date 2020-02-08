@@ -1,5 +1,11 @@
 provider "aws" {
-  alias = "acm"
+  alias = "us-east-1"
+}
+
+locals {
+  tags = merge(var.tags, {
+    Module = "static-site"
+  })
 }
 
 data "aws_iam_policy_document" "site_bucket_access" {
@@ -23,6 +29,7 @@ data "aws_iam_policy_document" "site_bucket_access" {
       values   = [random_string.secret.result]
     }
   }
+
 }
 
 resource "random_string" "secret" {
@@ -45,6 +52,8 @@ resource "aws_s3_bucket" "site_bucket" {
     index_document = "index.html"
     error_document = "error.html"
   }
+
+  tags = local.tags
 }
 
 resource "aws_cloudfront_distribution" "site_distribution" {
@@ -55,7 +64,7 @@ resource "aws_cloudfront_distribution" "site_distribution" {
       https_port             = 443
       http_port              = 80
       origin_protocol_policy = "http-only"
-      origin_ssl_protocols   = ["TLSv1.1", "TLSv1.2"]
+      origin_ssl_protocols   = ["TLSv1.2"]
     }
     custom_header {
       name  = "User-Agent"
@@ -66,7 +75,6 @@ resource "aws_cloudfront_distribution" "site_distribution" {
   enabled         = true
   is_ipv6_enabled = true
   comment         = "CloudFront distribution for static site (${var.project}-${var.environment})"
-  # default_root_object = "index.html"
 
   aliases = [var.domain]
 
@@ -74,6 +82,15 @@ resource "aws_cloudfront_distribution" "site_distribution" {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "${var.project}-${var.environment}-site-origin-${random_string.bucket_suffix.result}"
+
+    dynamic "lambda_function_association" {
+      for_each = var.lambda_function_associations
+      content {
+        event_type   = lambda_function_association.value.event_type
+        lambda_arn   = lambda_function_association.value.lambda_arn
+        include_body = lambda_function_association.value.include_body
+      }
+    }
 
     forwarded_values {
       query_string = false
@@ -88,7 +105,9 @@ resource "aws_cloudfront_distribution" "site_distribution" {
     max_ttl                = 86400
   }
 
-  price_class = "PriceClass_200"
+  price_class = "PriceClass_100"
+
+
 
   restrictions {
     geo_restriction {
@@ -96,35 +115,30 @@ resource "aws_cloudfront_distribution" "site_distribution" {
     }
   }
 
-  tags = {
-    Environment = var.environment
-    Project     = var.project
-  }
+  tags = local.tags
 
   viewer_certificate {
     cloudfront_default_certificate = false
     acm_certificate_arn            = aws_acm_certificate.site_certificate.arn
     ssl_support_method             = "sni-only"
-    minimum_protocol_version       = "TLSv1.1_2016"
+    minimum_protocol_version       = "TLSv1.2_2018"
   }
   depends_on = [aws_acm_certificate_validation.site_certificate_validation]
 }
 
 resource "aws_acm_certificate" "site_certificate" {
-  provider          = aws.acm
+  provider          = aws.us-east-1
   domain_name       = var.domain
   validation_method = "DNS"
 
-  tags = {
-    Name        = "Certificate for static site ${var.project}-${var.environment}"
-    Environment = var.environment
-    Project     = var.project
-  }
+  tags = merge(local.tags, {
+    Name = "Certificate for static site"
+  })
 
 }
 
 resource "aws_route53_record" "site_certificate_challenge" {
-  provider = aws.acm
+  provider = aws.us-east-1
   zone_id  = var.hosted_zone_id
   ttl      = 500
   name     = aws_acm_certificate.site_certificate.domain_validation_options[0].resource_record_name
@@ -135,7 +149,7 @@ resource "aws_route53_record" "site_certificate_challenge" {
 
 
 resource "aws_route53_record" "site_domain_alias" {
-  provider = aws.acm
+  provider = aws.us-east-1
   zone_id  = var.hosted_zone_id
   name     = var.domain
   type     = "A"
@@ -147,7 +161,7 @@ resource "aws_route53_record" "site_domain_alias" {
 }
 
 resource "aws_acm_certificate_validation" "site_certificate_validation" {
-  provider                = aws.acm
+  provider                = aws.us-east-1
   certificate_arn         = aws_acm_certificate.site_certificate.arn
   validation_record_fqdns = [aws_route53_record.site_certificate_challenge.fqdn]
 }
