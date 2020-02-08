@@ -26,7 +26,7 @@ data "aws_iam_policy_document" "site_bucket_access" {
 }
 
 resource "random_string" "secret" {
-  length  = 32
+  length  = 64
   special = false
   upper   = false
 }
@@ -39,7 +39,7 @@ resource "random_string" "bucket_suffix" {
 
 resource "aws_s3_bucket" "site_bucket" {
   bucket = "${var.project}-${var.environment}-site-bucket-${random_string.bucket_suffix.result}"
-  policy = "${data.aws_iam_policy_document.site_bucket_access.json}"
+  policy = data.aws_iam_policy_document.site_bucket_access.json
 
   website {
     index_document = "index.html"
@@ -63,9 +63,10 @@ resource "aws_cloudfront_distribution" "site_distribution" {
     }
   }
 
-  enabled             = true
-  is_ipv6_enabled     = true
-  comment             = "CloudFront distribution for static site (${var.project}-${var.environment})"
+  enabled         = true
+  is_ipv6_enabled = true
+  comment         = "CloudFront distribution for static site (${var.project}-${var.environment})"
+  # default_root_object = "index.html"
 
   aliases = [var.domain]
 
